@@ -50,8 +50,8 @@ func NewUI() *UI {
 		ui.Theme.Palette.ContrastFg = color.NRGBA{R: 253, G: 253, B: 253, A: 255}
 	}
 	ui.ChatList = new(ChatList)
-	ui.ChatList.SettingsBtn = new(widget.Clickable)
-	ui.ChatList.Chats = []*Chat{
+	ui.ChatAct = new(ChatActivity)
+	charr := []*Chat{
 		&Chat{"1", []GUIMessage{
 			{"1", "hello world!"},
 			{"1", "QWE42"},
@@ -64,7 +64,8 @@ func NewUI() *UI {
 			{"_", "Прости, что тебе спамлю, но... я шизофреник !!! !!! !!!! !!!"},
 		}, new(widget.Clickable)},
 	}
-	ui.ChatAct = new(ChatActivity)
+	ui.ChatList.Chats = charr
+	ui.ChatAct.Chats = charr
 	return ui
 }
 
@@ -80,8 +81,8 @@ func (ui *UI) Run(w *app.Window) error {
 				paint.Fill(&ops, ui.Theme.Palette.Bg)
 			}
 			ui.Size = e.Size
-			ui.ChatList.MaxX, ui.ChatList.MaxY = ui.Size.X, ui.Size.Y
 			ui.Layout(gtx)
+			ui.ChatAct.Selected = ui.ChatList.Selected
 			e.Frame(gtx.Ops)
 		case system.DestroyEvent:
 			return e.Err
@@ -92,8 +93,10 @@ func (ui *UI) Run(w *app.Window) error {
 
 // Layout layouts
 func (ui *UI) Layout(gtx C) D {
-	inset := layout.UniformInset(stdDP)
-	return inset.Layout(gtx, func(gtx C) D {
+	ui.ChatList.MaxX = ui.Size.X
+	ui.ChatAct.MaxX = ui.Size.X
+	var x *int
+	return layout.UniformInset(stdDP).Layout(gtx, func(gtx C) D {
 		return layout.Flex{
 			Axis: layout.Vertical,
 		}.Layout(gtx,
@@ -102,9 +105,15 @@ func (ui *UI) Layout(gtx C) D {
 					return layout.Flex{
 						Axis: layout.Horizontal,
 					}.Layout(gtx,
-						layout.Rigid(th2w(ui.ChatList.Layout, ui.Theme)),
-						wspacer,
-						layout.Rigid(th2w(ui.ChatAct.Layout, ui.Theme)),
+						layout.Rigid(func(gtx C) D {
+							dims := ui.ChatList.Layout(gtx, ui.Theme)
+							x = &dims.Size.X
+							return dims
+						}),
+						layout.Rigid(layout.Spacer{Width: unit.Dp(10)}.Layout),
+						layout.Rigid(func(gtx C) D {
+							return ui.ChatAct.Layout(gtx, ui.Theme, *x)
+						}),
 					)
 				},
 			),
@@ -112,12 +121,17 @@ func (ui *UI) Layout(gtx C) D {
 	})
 }
 
+func fgtx(gtx C) C {
+	fgx := *(&gtx) // to safely copy data (don't know why)
+	fgx.Ops = new(op.Ops)
+	return fgx
+}
+
 // ChatList _
 type ChatList struct {
-	MaxX, MaxY  int
-	Selected    string
-	SettingsBtn *widget.Clickable
-	Chats       []*Chat
+	MaxX     int
+	Selected string
+	Chats    []*Chat
 }
 
 // Layout _
@@ -138,48 +152,54 @@ func (cl *ChatList) Layout(gtx C, th T) D {
 					})
 			},
 		),
-		layout.Rigid(func(gtx C) D {
-			if cl.SettingsBtn.Clicked() {
-				cl.Selected = "settings"
-			}
-			return cl.SettingsBtn.Layout(gtx,
-				func(gtx C) D {
-					return func() widget.Border {
-						b := widget.Border{
-							CornerRadius: unit.Dp(2),
-							Color:        color.NRGBA{B: 125, A: 255},
-							Width:        unit.Dp(0.5),
-						}
-						if cl.Selected == "settings" {
-							b.Color = color.NRGBA{R: 255, A: 255}
-							b.Width = unit.Dp(1.5)
-						}
-
-						return b
-					}().Layout(gtx, func(gtx C) D {
-						fgtx := *(&gtx)
-						fgtx.Ops = new(op.Ops)
-						return layout.Inset{
-							Top:    unit.Dp(5),
-							Bottom: unit.Dp(5),
-							Left:   unit.Dp(5),
-							Right: unit.Px(float32(cl.MaxX)/4 - float32(
-								material.Body2(th, "Settings").Layout(fgtx).Size.X),
-							),
-						}.Layout(gtx, material.Body2(th, "Settings").Layout)
-					})
-				},
-			)
-		}),
 	)
 }
 
 // ChatActivity _
-type ChatActivity struct{}
+type ChatActivity struct {
+	MaxX     int
+	Selected string
+	Chats    []*Chat
+}
 
 // Layout _
-func (ca *ChatActivity) Layout(gtx C, th T) D {
-	return D{}
+func (ca *ChatActivity) Layout(gtx C, th T, startX int) D {
+	if ca.Selected == "" {
+		ca.Selected = "OVERMSg"
+	}
+	return layout.Flex{
+		Axis:    layout.Vertical,
+		Spacing: layout.SpaceEnd,
+	}.Layout(gtx,
+		// header...
+		layout.Rigid(func(gtx C) D {
+			return widget.Border{Color: th.ContrastBg, Width: unit.Dp(3.5)}.Layout(gtx,
+				func(gtx C) D {
+					return layout.UniformInset(unit.Dp(5)).Layout(gtx,
+						func(gtx C) D {
+							return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+								layout.Rigid(material.Body2(th, ca.Selected).Layout),
+								layout.Rigid(layout.Spacer{Width: unit.Px(
+									float32(ca.MaxX)/1.07 - // hello, hardcoded number! (got it during experiments)
+										float32(
+											// 20 because it is sum of spacer and insets (5 + 10 + 5)
+											20+startX+material.Body2(th, ca.Selected).Layout(fgtx(gtx)).Size.X,
+										),
+								)}.Layout),
+							)
+						},
+					)
+				},
+			)
+		}),
+		layout.Rigid(func(gtx C) D {
+			return (&layout.List{Axis: layout.Vertical}).Layout(
+				gtx,
+				len(ca.Chats),
+				func(gtx C, ind int) D { return D{} },
+			)
+		}),
+	)
 }
 func th2w(next func(C, T) D, th T) func(C) D {
 	return func(gtx C) D {
@@ -196,13 +216,6 @@ type Chat struct {
 
 // LayoutList layouts list small preview
 func (c *Chat) LayoutList(gtx C, th T, maxX int, cl *ChatList) D {
-	var fgtx = C{
-		Constraints: gtx.Constraints,
-		Metric:      gtx.Metric,
-		Queue:       gtx.Queue,
-		Now:         gtx.Now,
-		Ops:         new(op.Ops),
-	}
 	if c.Button.Clicked() {
 		cl.Selected = c.PeerName
 	}
@@ -225,8 +238,8 @@ func (c *Chat) LayoutList(gtx C, th T, maxX int, cl *ChatList) D {
 				Bottom: unit.Dp(5),
 				Left:   unit.Dp(5),
 				Right: unit.Px(float32(maxX)/4 - float32(math.Max(
-					float64(material.Label(th, unit.Dp(12.5), getSmallStr(c)).Layout(fgtx).Size.X),
-					float64(material.Body2(th, c.PeerName).Layout(fgtx).Size.X),
+					float64(material.Label(th, unit.Dp(12.5), getSmallStr(c)).Layout(fgtx(gtx)).Size.X),
+					float64(material.Body2(th, c.PeerName).Layout(fgtx(gtx)).Size.X),
 				))),
 			}.Layout(gtx,
 				func(gtx C) D {
