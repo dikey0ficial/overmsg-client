@@ -10,9 +10,11 @@ import (
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"golang.org/x/exp/shiny/materialdesign/icons"
 	"image"
 	"image/color"
 	"math"
+	"strings"
 )
 
 type (
@@ -53,19 +55,54 @@ func NewUI() *UI {
 	ui.ChatAct = new(ChatActivity)
 	charr := []*Chat{
 		&Chat{"1", []GUIMessage{
-			{"1", "hello world!"},
 			{"1", "QWE42"},
+			{"1", "hello world"},
 		}, new(widget.Clickable)},
 		&Chat{"Vasyok", []GUIMessage{}, new(widget.Clickable)},
 		&Chat{"Qwertyque", []GUIMessage{
-			{"Qwertyque", "lol !!!! sus amogus(((((((((((((((((((((("},
+			{"Qwertyque", "lorem ipsum dolor sit amet((("},
 		}, new(widget.Clickable)},
 		&Chat{"_", []GUIMessage{
-			{"_", "Прости, что тебе спамлю, но... я шизофреник !!! !!! !!!! !!!"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
+			{"_", "Прости, что тебе спамлю, но... я шизофреник !!!!!!!!!!!!!"},
+			{"admin", "да я уже понял)"},
 		}, new(widget.Clickable)},
 	}
 	ui.ChatList.Chats = charr
-	ui.ChatAct.Chats = charr
+	ui.ChatList.List = &layout.List{Axis: layout.Vertical}
+	ui.ChatAct.List = &widget.List{List: layout.List{Axis: layout.Vertical, ScrollToEnd: true}}
+	ui.ChatAct.SendBtn = material.IconButton(
+		ui.Theme,
+		new(widget.Clickable),
+		getIcon(icons.ContentSend),
+		"Send message",
+	)
+	ui.ChatAct.SendBtn.Size = unit.Dp(15)
+	ui.ChatAct.Input = material.Editor(
+		ui.Theme,
+		&widget.Editor{
+			SingleLine: true,
+			Submit:     true,
+		},
+		"Type your message here...",
+	)
 	return ui
 }
 
@@ -73,22 +110,30 @@ func NewUI() *UI {
 func (ui *UI) Run(w *app.Window) error {
 	ui.Win = w
 	var ops op.Ops
-	for e := range w.Events() {
-		switch e := e.(type) {
-		case system.FrameEvent:
-			gtx := layout.NewContext(&ops, e)
-			if ui.IsDark {
-				paint.Fill(&ops, ui.Theme.Palette.Bg)
+	for {
+		select {
+		case e := <-w.Events():
+			switch e := e.(type) {
+			case system.FrameEvent:
+				if e.Size.X >= 1920 {
+					e.Size.X -= 80 * (1920 / e.Size.X)
+				}
+				if e.Size.Y >= 1080 {
+					e.Size.Y -= 25 * (1080 / e.Size.Y)
+				}
+				gtx := layout.NewContext(&ops, e)
+				if ui.IsDark {
+					paint.Fill(&ops, ui.Theme.Palette.Bg)
+				}
+				ui.Size = e.Size
+				ui.Layout(gtx)
+				ui.ChatAct.Selected, ui.ChatAct.Chat = ui.ChatList.Selected, GetByPN(ui.ChatList.Chats, ui.ChatList.Selected)
+				e.Frame(gtx.Ops)
+			case system.DestroyEvent:
+				return e.Err
 			}
-			ui.Size = e.Size
-			ui.Layout(gtx)
-			ui.ChatAct.Selected = ui.ChatList.Selected
-			e.Frame(gtx.Ops)
-		case system.DestroyEvent:
-			return e.Err
 		}
 	}
-	return nil
 }
 
 // Layout layouts
@@ -96,7 +141,12 @@ func (ui *UI) Layout(gtx C) D {
 	ui.ChatList.MaxX = ui.Size.X
 	ui.ChatAct.MaxX = ui.Size.X
 	var x *int
-	return layout.UniformInset(stdDP).Layout(gtx, func(gtx C) D {
+	return layout.Inset{
+		Top:    unit.Dp(stdDP.V * 2),
+		Bottom: unit.Dp(stdDP.V * 2),
+		Left:   stdDP,
+		Right:  stdDP,
+	}.Layout(gtx, func(gtx C) D {
 		return layout.Flex{
 			Axis: layout.Vertical,
 		}.Layout(gtx,
@@ -132,6 +182,7 @@ type ChatList struct {
 	MaxX     int
 	Selected string
 	Chats    []*Chat
+	List     *layout.List
 }
 
 // Layout _
@@ -141,15 +192,14 @@ func (cl *ChatList) Layout(gtx C, th T) D {
 	}.Layout(gtx,
 		layout.Rigid(
 			func(gtx C) D {
-				return (&layout.List{Axis: layout.Vertical}).
-					Layout(gtx, len(cl.Chats), func(gtx C, ind int) D {
-						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
-							layout.Rigid(func(gtx C) D {
-								return cl.Chats[ind].LayoutList(gtx, th, cl.MaxX, cl)
-							}),
-							layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
-						)
-					})
+				return cl.List.Layout(gtx, len(cl.Chats), func(gtx C, ind int) D {
+					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+						layout.Rigid(func(gtx C) D {
+							return cl.Chats[ind].LayoutList(gtx, th, cl.MaxX, cl)
+						}),
+						layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+					)
+				})
 			},
 		),
 	)
@@ -159,7 +209,10 @@ func (cl *ChatList) Layout(gtx C, th T) D {
 type ChatActivity struct {
 	MaxX     int
 	Selected string
-	Chats    []*Chat
+	List     *widget.List
+	Input    material.EditorStyle
+	SendBtn  material.IconButtonStyle
+	Chat     *Chat
 }
 
 // Layout _
@@ -171,19 +224,29 @@ func (ca *ChatActivity) Layout(gtx C, th T, startX int) D {
 		Axis:    layout.Vertical,
 		Spacing: layout.SpaceEnd,
 	}.Layout(gtx,
-		// header...
+		// header
 		layout.Rigid(func(gtx C) D {
 			return widget.Border{Color: th.ContrastBg, Width: unit.Dp(3.5)}.Layout(gtx,
 				func(gtx C) D {
 					return layout.UniformInset(unit.Dp(5)).Layout(gtx,
 						func(gtx C) D {
 							return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-								layout.Rigid(material.Body2(th, ca.Selected).Layout),
+								layout.Rigid(material.Body2(th, func() string {
+									if ca.Selected == "OVERMSg" {
+										return ca.Selected
+									}
+									return "Chat with <" + ca.Selected + ">"
+								}()).Layout),
 								layout.Rigid(layout.Spacer{Width: unit.Px(
 									float32(ca.MaxX)/1.07 - // hello, hardcoded number! (got it during experiments)
 										float32(
 											// 20 because it is sum of spacer and insets (5 + 10 + 5)
-											20+startX+material.Body2(th, ca.Selected).Layout(fgtx(gtx)).Size.X,
+											20+startX+material.Body2(th, func() string {
+												if ca.Selected == "OVERMSg" {
+													return ca.Selected
+												}
+												return "Chat with <" + ca.Selected + ">"
+											}()).Layout(fgtx(gtx)).Size.X,
 										),
 								)}.Layout),
 							)
@@ -192,11 +255,76 @@ func (ca *ChatActivity) Layout(gtx C, th T, startX int) D {
 				},
 			)
 		}),
+		// messages
 		layout.Rigid(func(gtx C) D {
-			return (&layout.List{Axis: layout.Vertical}).Layout(
-				gtx,
-				len(ca.Chats),
-				func(gtx C, ind int) D { return D{} },
+			if ca.Selected == "OVERMSg" {
+				return D{}
+			}
+			if ca.Chat.PeerName != ca.Selected {
+				return D{}
+			}
+			if len(ca.Chat.Messages) == 0 {
+				gx := *(&gtx)
+				gx.Constraints.Max.Y -= 55
+				gx.Constraints.Min.Y = gx.Constraints.Max.Y
+				return layout.Flex{Alignment: layout.Middle, Axis: layout.Vertical}.Layout(gx,
+					layout.Rigid(layout.Spacer{Height: unit.Dp(15)}.Layout),
+					layout.Rigid(material.Body2(th, "There's nothing...").Layout),
+				)
+			}
+			return layout.UniformInset(unit.Dp(15)).Layout(gtx, func(gtx C) D {
+				gx := *(&gtx)
+				gx.Constraints.Max.Y -= 55
+				return material.List(th, ca.List).Layout(
+					gx,
+					len(ca.Chat.Messages),
+					func(gtx C, ind int) D { return ca.Chat.Messages[ind].Layout(gtx, th, ca.Chat.PeerName) },
+				)
+			},
+			)
+		}),
+		layout.Rigid(func(gtx C) D {
+			if ca.Selected == "OVERMSg" {
+				return D{}
+			}
+			if ca.SendBtn.Button.Clicked() || func() bool {
+				evs := ca.Input.Editor.Events()
+				if len(evs) == 0 {
+					return false
+				}
+				for i := range evs {
+					switch evs[i].(type) {
+					case widget.SubmitEvent:
+						return true
+					}
+				}
+				return false
+			}() {
+				txt := strings.TrimSpace(ca.Input.Editor.Text())
+				if len([]rune(txt)) != 0 {
+					ca.Input.Editor.SetText("")
+					ca.Chat.Messages = append(ca.Chat.Messages, GUIMessage{"admin", txt}) // TODO: remove hardcoded name
+				}
+			}
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+				layout.Rigid(
+					func(gtx C) D {
+						gx := *(&gtx)
+						gx.Constraints.Max.X -= 90
+						gx.Constraints.Min.X = gx.Constraints.Max.X
+						return widget.Border{
+							Width:        unit.Dp(0.5),
+							Color:        th.Fg,
+							CornerRadius: unit.Dp(3),
+						}.Layout(gx,
+							func(gtx C) D {
+								return layout.UniformInset(unit.Dp(5)).Layout(gtx, ca.Input.Layout)
+							},
+						)
+					},
+				),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(15)}.Layout),
+				layout.Rigid(ca.SendBtn.Layout),
 			)
 		}),
 	)
@@ -212,6 +340,27 @@ type Chat struct {
 	PeerName string
 	Messages []GUIMessage
 	Button   *widget.Clickable
+}
+
+// GetByPN returns chat by peername
+func GetByPN(arr []*Chat, pn string) *Chat {
+	for _, c := range arr {
+		if c.PeerName == pn {
+			return c
+		}
+	}
+	return &Chat{}
+}
+
+func getSmallStr(c *Chat) string {
+	if len(c.Messages) == 0 {
+		return "[no messages]"
+	}
+	t := c.Messages[len(c.Messages)-1].Text
+	if len([]rune(t)) > 21 {
+		t = string([]rune(t)[:18]) + "..."
+	}
+	return t
 }
 
 // LayoutList layouts list small preview
@@ -263,13 +412,29 @@ type GUIMessage struct {
 	Text string
 }
 
-func getSmallStr(c *Chat) string {
-	if len(c.Messages) == 0 {
-		return "[нет сообщений]"
-	}
-	t := c.Messages[len(c.Messages)-1].Text
-	if len([]rune(t)) > 21 {
-		t = string([]rune(t)[:18]) + "..."
-	}
-	return t
+// Layout layouts
+func (g GUIMessage) Layout(gtx C, th T, chname string) D {
+	return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+		layout.Rigid(func(gtx C) D {
+			gx := *(&gtx)
+			gx.Constraints.Min.X = gx.Constraints.Max.X
+			return layout.Flex{Axis: layout.Horizontal}.Layout(gx,
+				layout.Rigid(material.Body2(func() T {
+					t := *th
+					t.Fg = color.NRGBA{R: 255, G: 127, A: 255}
+					if g.From != chname {
+						t.Fg = color.NRGBA{G: 127, B: 127, A: 255}
+					}
+					return &t
+				}(), "<"+g.From+">\t").Layout),
+				layout.Rigid(material.Label(th, unit.Dp(15), g.Text).Layout),
+			)
+		}),
+		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+	)
+}
+
+func getIcon(dat []byte) *widget.Icon {
+	ic, _ := widget.NewIcon(dat)
+	return ic
 }
