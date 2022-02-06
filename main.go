@@ -14,11 +14,16 @@ var (
 
 func init() {
 	debl = log.New(os.Stdout, "[DEBUG]\t", log.Ldate|log.Ltime|log.Lshortfile)
-	errl = log.New(os.Stderr, "[ERROR]\t", log.Ldate|log.Ltime|log.Lshortfile)
+	errlf, err := os.Create("errors.log")
+	if err != nil {
+		dialog.Message("Error: %v", err).Title("Error!!1").Error()
+		os.Exit(1)
+	}
+	errl = log.New(errlf, "[ERROR]\t", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
 func work(ui *UI) {
-	fsize := [2]unit.Value{unit.Dp(512), unit.Dp(512)}
+	fsize := [2]unit.Value{unit.Dp(768), unit.Dp(512)}
 	options := []app.Option{
 		app.Title("OVERMSg"),
 		app.Size(fsize[0], fsize[1]),

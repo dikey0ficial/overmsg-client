@@ -7,13 +7,16 @@ import (
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/paint"
+	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
+	"github.com/sqweek/dialog"
 	"golang.org/x/exp/shiny/materialdesign/icons"
 	"image"
 	"image/color"
 	"math"
+	"os"
 	"strings"
 )
 
@@ -35,7 +38,6 @@ var (
 // UI _
 type UI struct {
 	Theme    *material.Theme
-	IsDark   bool
 	ChatList *ChatList
 	ChatAct  *ChatActivity
 	Size     image.Point
@@ -45,12 +47,7 @@ type UI struct {
 // NewUI is constructor for UI
 func NewUI() *UI {
 	ui := new(UI)
-	ui.Theme = material.NewTheme(gofont.Collection())
-	if ui.IsDark {
-		ui.Theme.Palette.Bg = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
-		ui.Theme.Palette.Fg = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
-		ui.Theme.Palette.ContrastFg = color.NRGBA{R: 253, G: 253, B: 253, A: 255}
-	}
+	ui.SetTheme(conf.IsDark)
 	ui.ChatList = new(ChatList)
 	ui.ChatAct = new(ChatActivity)
 	charr := []*Chat{
@@ -103,7 +100,39 @@ func NewUI() *UI {
 		},
 		"Type your message here...",
 	)
+	ui.ChatList.Selected = "_home"
+	ui.ChatList.HomeTab = new(HomeTab)
+	ui.ChatList.HomeTab.ListButton = material.Button(ui.Theme, new(widget.Clickable), "OVERMSg")
+	ui.ChatList.HomeTab.ListButton.Font.Weight = text.Bold
+	themeb := new(widget.Bool)
+	themeb.Value = conf.IsDark
+	ui.ChatList.HomeTab.ThemeSwitch = material.Switch(
+		ui.Theme,
+		themeb,
+		"Dark theme",
+	)
+	ui.ChatList.HomeTab.NameInput = material.Editor(
+		ui.Theme,
+		&widget.Editor{
+			SingleLine: true,
+			Submit:     true,
+		},
+		"Type your name here...",
+	)
+	ui.ChatList.HomeTab.RegBtn = material.Button(ui.Theme, new(widget.Clickable), "Register")
+	ui.ChatList.HomeTab.LogoutBtn = material.Button(ui.Theme, new(widget.Clickable), "Log out")
+	ui.ChatAct.HomeTab = ui.ChatList.HomeTab
 	return ui
+}
+
+// SetTheme sets dark or light theme
+func (ui *UI) SetTheme(dark bool) {
+	ui.Theme = material.NewTheme(gofont.Collection())
+	if conf.IsDark {
+		ui.Theme.Palette.Bg = color.NRGBA{R: 22, G: 27, B: 34, A: 255}
+		ui.Theme.Palette.Fg = color.NRGBA{R: 201, G: 209, B: 217, A: 255}
+		ui.Theme.Palette.ContrastFg = color.NRGBA{R: 253, G: 253, B: 253, A: 255}
+	}
 }
 
 // Run starts layouting
@@ -122,7 +151,7 @@ func (ui *UI) Run(w *app.Window) error {
 					e.Size.Y -= 25 * (1080 / e.Size.Y)
 				}
 				gtx := layout.NewContext(&ops, e)
-				if ui.IsDark {
+				if conf.IsDark {
 					paint.Fill(&ops, ui.Theme.Palette.Bg)
 				}
 				ui.Size = e.Size
@@ -162,7 +191,7 @@ func (ui *UI) Layout(gtx C) D {
 						}),
 						layout.Rigid(layout.Spacer{Width: unit.Dp(10)}.Layout),
 						layout.Rigid(func(gtx C) D {
-							return ui.ChatAct.Layout(gtx, ui.Theme, *x)
+							return ui.ChatAct.Layout(gtx, ui.Theme, *x, ui)
 						}),
 					)
 				},
@@ -182,6 +211,7 @@ type ChatList struct {
 	MaxX     int
 	Selected string
 	Chats    []*Chat
+	HomeTab  *HomeTab
 	List     *layout.List
 }
 
@@ -192,10 +222,13 @@ func (cl *ChatList) Layout(gtx C, th T) D {
 	}.Layout(gtx,
 		layout.Rigid(
 			func(gtx C) D {
-				return cl.List.Layout(gtx, len(cl.Chats), func(gtx C, ind int) D {
+				return cl.List.Layout(gtx, len(cl.Chats)+1, func(gtx C, ind int) D {
 					return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 						layout.Rigid(func(gtx C) D {
-							return cl.Chats[ind].LayoutList(gtx, th, cl.MaxX, cl)
+							if ind == 0 {
+								return cl.HomeTab.LayoutList(gtx, th, cl)
+							}
+							return cl.Chats[ind-1].LayoutList(gtx, th, cl)
 						}),
 						layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
 					)
@@ -212,13 +245,14 @@ type ChatActivity struct {
 	List     *widget.List
 	Input    material.EditorStyle
 	SendBtn  material.IconButtonStyle
+	HomeTab  *HomeTab
 	Chat     *Chat
 }
 
 // Layout _
-func (ca *ChatActivity) Layout(gtx C, th T, startX int) D {
+func (ca *ChatActivity) Layout(gtx C, th T, startX int, ui *UI) D {
 	if ca.Selected == "" {
-		ca.Selected = "OVERMSg"
+		ca.Selected = "_home"
 	}
 	return layout.Flex{
 		Axis:    layout.Vertical,
@@ -232,20 +266,20 @@ func (ca *ChatActivity) Layout(gtx C, th T, startX int) D {
 						func(gtx C) D {
 							return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
 								layout.Rigid(material.Body2(th, func() string {
-									if ca.Selected == "OVERMSg" {
-										return ca.Selected
+									if ca.Selected == "_home" {
+										return "Start page"
 									}
-									return "Chat with <" + ca.Selected + ">"
+									return "Chat with " + ca.Selected
 								}()).Layout),
 								layout.Rigid(layout.Spacer{Width: unit.Px(
 									float32(ca.MaxX)/1.07 - // hello, hardcoded number! (got it during experiments)
 										float32(
 											// 20 because it is sum of spacer and insets (5 + 10 + 5)
 											20+startX+material.Body2(th, func() string {
-												if ca.Selected == "OVERMSg" {
-													return ca.Selected
+												if ca.Selected == "_home" {
+													return "Start page"
 												}
-												return "Chat with <" + ca.Selected + ">"
+												return "Chat with " + ca.Selected
 											}()).Layout(fgtx(gtx)).Size.X,
 										),
 								)}.Layout),
@@ -257,8 +291,8 @@ func (ca *ChatActivity) Layout(gtx C, th T, startX int) D {
 		}),
 		// messages
 		layout.Rigid(func(gtx C) D {
-			if ca.Selected == "OVERMSg" {
-				return D{}
+			if ca.Selected == "_home" {
+				return ca.HomeTab.Layout(gtx, th, ui)
 			}
 			if ca.Chat.PeerName != ca.Selected {
 				return D{}
@@ -284,7 +318,7 @@ func (ca *ChatActivity) Layout(gtx C, th T, startX int) D {
 			)
 		}),
 		layout.Rigid(func(gtx C) D {
-			if ca.Selected == "OVERMSg" {
+			if ca.Selected == "_home" {
 				return D{}
 			}
 			if ca.SendBtn.Button.Clicked() || func() bool {
@@ -303,7 +337,7 @@ func (ca *ChatActivity) Layout(gtx C, th T, startX int) D {
 				txt := strings.TrimSpace(ca.Input.Editor.Text())
 				if len([]rune(txt)) != 0 {
 					ca.Input.Editor.SetText("")
-					ca.Chat.Messages = append(ca.Chat.Messages, GUIMessage{"admin", txt}) // TODO: remove hardcoded name
+					ca.Chat.Messages = append(ca.Chat.Messages, GUIMessage{conf.Name, txt})
 				}
 			}
 			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
@@ -364,7 +398,8 @@ func getSmallStr(c *Chat) string {
 }
 
 // LayoutList layouts list small preview
-func (c *Chat) LayoutList(gtx C, th T, maxX int, cl *ChatList) D {
+func (c *Chat) LayoutList(gtx C, th T, cl *ChatList) D {
+	maxX := cl.MaxX
 	if c.Button.Clicked() {
 		cl.Selected = c.PeerName
 	}
@@ -431,6 +466,126 @@ func (g GUIMessage) Layout(gtx C, th T, chname string) D {
 			)
 		}),
 		layout.Rigid(layout.Spacer{Height: unit.Dp(10)}.Layout),
+	)
+}
+
+// HomeTab is tab which shows on start
+type HomeTab struct {
+	ListButton  material.ButtonStyle
+	ThemeSwitch material.SwitchStyle
+	NameInput   material.EditorStyle
+	RegBtn      material.ButtonStyle
+	LogoutBtn   material.ButtonStyle
+}
+
+// LayoutList layouts HomeTab's view in list
+func (ht *HomeTab) LayoutList(gtx C, th T, cl *ChatList) D {
+	gx := *(&gtx)
+	gx.Constraints.Min.X = cl.MaxX/4 + 5
+	gx.Constraints.Max.X = gx.Constraints.Min.X
+	ht.ListButton.Inset.Top = unit.Dp(5)
+	ht.ListButton.Inset.Bottom = unit.Dp(5)
+	ht.ListButton.Background = th.Palette.ContrastBg
+	if ht.ListButton.Button.Clicked() {
+		cl.Selected = "_home"
+	}
+	if cl.Selected == "_home" {
+		ht.ListButton.Background.G += 25
+	}
+	return ht.ListButton.Layout(gx)
+}
+
+// Layout layouts HomeTab's view instead of chat
+func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
+	if ht.ThemeSwitch.Switch.Changed() {
+		conf.IsDark = ht.ThemeSwitch.Switch.Value
+		ui.SetTheme(ht.ThemeSwitch.Switch.Value)
+		err := saveConf()
+		if err != nil {
+			dialog.Message("Error: %v", err).Title("Error!!1").Error()
+			errl.Println(err)
+			os.Exit(1)
+		}
+		ui.Win.Invalidate()
+	}
+	return layout.Flex{
+		Axis: layout.Vertical,
+	}.Layout(gtx,
+		hspacer,
+		layout.Rigid(material.H4(th, "Settings").Layout),
+		hspacer,
+		layout.Rigid(func(gtx C) D {
+			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+				layout.Rigid(material.Label(th, unit.Dp(15), "Dark theme:\t").Layout),
+				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
+				layout.Rigid(ht.ThemeSwitch.Layout),
+			)
+		}),
+
+		layout.Rigid(material.H5(th, "Account:\t").Layout),
+		layout.Rigid(func(gtx C) D {
+			if conf.Name == "" {
+				var warn string
+				txt := strings.TrimSpace(ht.NameInput.Editor.Text())
+				if strings.HasPrefix(txt, "_") {
+					warn = "Nick shouldn't start with '_'"
+				}
+				if len([]rune(ht.NameInput.Editor.Text())) > 32 {
+					ht.NameInput.Editor.Delete(
+						-(len([]rune(ht.NameInput.Editor.Text())) - 32),
+					)
+				}
+				if ht.RegBtn.Button.Clicked() && warn == "" {
+					conf.Name = txt
+					// TODO: add server registration
+					err := saveConf()
+					if err != nil {
+						dialog.Message("Error: %v", err).Title("Error!!1").Error()
+						errl.Println(err)
+						os.Exit(1)
+					}
+				}
+				return layout.Flex{
+					Axis:      layout.Horizontal,
+					Alignment: layout.Middle,
+				}.Layout(gtx,
+					layout.Rigid(material.Label(th, unit.Dp(15), "Name:\t").Layout),
+					layout.Rigid(func(gtx C) D {
+						col, wid := th.Fg, unit.Dp(0.5)
+						if warn != "" {
+							col, wid = color.NRGBA{R: 255, A: 255}, unit.Dp(1)
+						}
+						return widget.Border{
+							CornerRadius: unit.Dp(5),
+							Color:        col,
+							Width:        wid,
+						}.Layout(gtx, func(gtx C) D {
+							return layout.UniformInset(unit.Dp(4)).Layout(gtx, ht.NameInput.Layout) // TODO: make more strict checks
+						})
+					}),
+					wspacer,
+					layout.Rigid(func(gtx C) D {
+						if warn != "" {
+							return material.Label(th, unit.Dp(15), warn).Layout(gtx)
+						}
+						return ht.RegBtn.Layout(gtx)
+					}),
+				)
+			}
+			if ht.LogoutBtn.Button.Clicked() {
+				ok := dialog.Message("Do you realy want to logout? You'll lose this nickname forever").YesNo()
+				if ok {
+					ok = dialog.Message("Really?").YesNo()
+					if ok {
+						conf.Name, conf.Token = "", ""
+						ui.ChatList.Chats = []*Chat{}
+						ui.Win.Invalidate()
+						return D{}
+					}
+				}
+			}
+			return ht.LogoutBtn.Layout(gtx)
+		}),
 	)
 }
 
