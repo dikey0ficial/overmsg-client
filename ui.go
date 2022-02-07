@@ -457,7 +457,7 @@ func (g GUIMessage) Layout(gtx C, th T, chname string) D {
 				layout.Rigid(material.Body2(func() T {
 					t := *th
 					t.Fg = color.NRGBA{R: 255, G: 127, A: 255}
-					if g.From != chname {
+					if g.From == conf.Name {
 						t.Fg = color.NRGBA{G: 127, B: 127, A: 255}
 					}
 					return &t
@@ -472,6 +472,7 @@ func (g GUIMessage) Layout(gtx C, th T, chname string) D {
 // HomeTab is tab which shows on start
 type HomeTab struct {
 	ListButton  material.ButtonStyle
+	Settings    widget.Bool
 	ThemeSwitch material.SwitchStyle
 	NameInput   material.EditorStyle
 	RegBtn      material.ButtonStyle
@@ -495,96 +496,139 @@ func (ht *HomeTab) LayoutList(gtx C, th T, cl *ChatList) D {
 	return ht.ListButton.Layout(gx)
 }
 
+const allowedSymbols = "QWERTYUIOPASDFGHJKLZXCVBNM" +
+	"qwertyuiopasdfghjklzxcvbnm" +
+	"0123456789" +
+	"_-"
+
 // Layout layouts HomeTab's view instead of chat
 func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 	if ht.ThemeSwitch.Switch.Changed() {
 		conf.IsDark = ht.ThemeSwitch.Switch.Value
-		ui.SetTheme(ht.ThemeSwitch.Switch.Value)
 		err := saveConf()
 		if err != nil {
 			dialog.Message("Error: %v", err).Title("Error!!1").Error()
 			errl.Println(err)
 			os.Exit(1)
 		}
+		lastUI := *ui
+		*ui = *NewUI()
+		ui.ChatList.HomeTab.Settings.Value = true
+		ui.Win = lastUI.Win
 		ui.Win.Invalidate()
+		return D{}
 	}
 	return layout.Flex{
 		Axis: layout.Vertical,
 	}.Layout(gtx,
 		hspacer,
-		layout.Rigid(material.H4(th, "Settings").Layout),
-		hspacer,
 		layout.Rigid(func(gtx C) D {
-			return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
-				layout.Rigid(material.Label(th, unit.Dp(15), "Dark theme:\t").Layout),
-				layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
-				layout.Rigid(ht.ThemeSwitch.Layout),
+			return layout.Flex{Axis: layout.Horizontal, Alignment: layout.Middle}.Layout(gtx,
+				layout.Rigid(func(gtx C) D {
+					var icon *widget.Icon = getIcon(icons.NavigationUnfoldMore)
+					if ht.Settings.Value {
+						icon = getIcon(icons.NavigationUnfoldLess)
+					}
+					return icon.Layout(gtx, th.Fg)
+				}),
+				wspacer,
+				layout.Rigid(func(gtx C) D { return ht.Settings.Layout(gtx, material.H4(th, "Settings").Layout) }),
 			)
 		}),
-
-		layout.Rigid(material.H5(th, "Account:\t").Layout),
+		hspacer,
 		layout.Rigid(func(gtx C) D {
-			if conf.Name == "" {
-				var warn string
-				txt := strings.TrimSpace(ht.NameInput.Editor.Text())
-				if strings.HasPrefix(txt, "_") {
-					warn = "Nick shouldn't start with '_'"
-				}
-				if len([]rune(ht.NameInput.Editor.Text())) > 32 {
-					ht.NameInput.Editor.Delete(
-						-(len([]rune(ht.NameInput.Editor.Text())) - 32),
-					)
-				}
-				if ht.RegBtn.Button.Clicked() && warn == "" {
-					conf.Name = txt
-					// TODO: add server registration
-					err := saveConf()
-					if err != nil {
-						dialog.Message("Error: %v", err).Title("Error!!1").Error()
-						errl.Println(err)
-						os.Exit(1)
-					}
-				}
-				return layout.Flex{
-					Axis:      layout.Horizontal,
-					Alignment: layout.Middle,
-				}.Layout(gtx,
-					layout.Rigid(material.Label(th, unit.Dp(15), "Name:\t").Layout),
+			if ht.Settings.Value {
+				return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 					layout.Rigid(func(gtx C) D {
-						col, wid := th.Fg, unit.Dp(0.5)
-						if warn != "" {
-							col, wid = color.NRGBA{R: 255, A: 255}, unit.Dp(1)
-						}
-						return widget.Border{
-							CornerRadius: unit.Dp(5),
-							Color:        col,
-							Width:        wid,
-						}.Layout(gtx, func(gtx C) D {
-							return layout.UniformInset(unit.Dp(4)).Layout(gtx, ht.NameInput.Layout) // TODO: make more strict checks
-						})
+						return layout.Flex{Axis: layout.Horizontal}.Layout(gtx,
+							layout.Rigid(material.Label(th, unit.Dp(15), "Dark theme:\t").Layout),
+							layout.Rigid(layout.Spacer{Width: unit.Dp(5)}.Layout),
+							layout.Rigid(ht.ThemeSwitch.Layout),
+						)
 					}),
-					wspacer,
+					hspacer,
+					layout.Rigid(material.H5(th, "Account:\t").Layout),
+					hspacer,
 					layout.Rigid(func(gtx C) D {
-						if warn != "" {
-							return material.Label(th, unit.Dp(15), warn).Layout(gtx)
+						if conf.Name == "" {
+							var warn string
+							txt := strings.TrimSpace(ht.NameInput.Editor.Text())
+							if strings.HasPrefix(txt, "_") {
+								warn = "Nick shouldn't start with '_'"
+							}
+							var isValid bool = true
+						BIG:
+							for _, sym := range []rune(txt) {
+								for _, asym := range allowedSymbols {
+									if sym == asym {
+										continue BIG
+									}
+								}
+								isValid = false
+								break
+							}
+							if !isValid {
+								warn = "Nick contains illegal symbols; allowed only english alphabet, numbers, underscore and dash"
+							}
+							if len([]rune(ht.NameInput.Editor.Text())) > 32 {
+								ht.NameInput.Editor.Delete(
+									-(len([]rune(ht.NameInput.Editor.Text())) - 32),
+								)
+							}
+							if ht.RegBtn.Button.Clicked() && warn == "" {
+								conf.Name = txt
+								// TODO: add server registration
+								err := saveConf()
+								if err != nil {
+									dialog.Message("Error: %v", err).Title("Error!!1").Error()
+									errl.Println(err)
+									os.Exit(1)
+								}
+							}
+							return layout.Flex{
+								Axis:      layout.Horizontal,
+								Alignment: layout.Middle,
+							}.Layout(gtx,
+								layout.Rigid(material.Label(th, unit.Dp(15), "Name:\t").Layout),
+								layout.Rigid(func(gtx C) D {
+									col, wid := th.Fg, unit.Dp(0.5)
+									if warn != "" {
+										col, wid = color.NRGBA{R: 255, A: 255}, unit.Dp(1)
+									}
+									return widget.Border{
+										CornerRadius: unit.Dp(5),
+										Color:        col,
+										Width:        wid,
+									}.Layout(gtx, func(gtx C) D {
+										return layout.UniformInset(unit.Dp(4)).Layout(gtx, ht.NameInput.Layout) // TODO: make more strict checks
+									})
+								}),
+								wspacer,
+								layout.Rigid(func(gtx C) D {
+									if warn != "" {
+										return material.Label(th, unit.Dp(15), warn).Layout(gtx)
+									}
+									return ht.RegBtn.Layout(gtx)
+								}),
+							)
 						}
-						return ht.RegBtn.Layout(gtx)
+						if ht.LogoutBtn.Button.Clicked() {
+							ok := dialog.Message("Do you realy want to logout? You'll lose this nickname forever").YesNo()
+							if ok {
+								ok = dialog.Message("Really?").YesNo()
+								if ok {
+									conf.Name, conf.Token = "", ""
+									ui.ChatList.Chats = []*Chat{}
+									ui.Win.Invalidate()
+									return D{}
+								}
+							}
+						}
+						return ht.LogoutBtn.Layout(gtx)
 					}),
 				)
 			}
-			if ht.LogoutBtn.Button.Clicked() {
-				ok := dialog.Message("Do you realy want to logout? You'll lose this nickname forever").YesNo()
-				if ok {
-					ok = dialog.Message("Really?").YesNo()
-					if ok {
-						conf.Name, conf.Token = "", ""
-						ui.ChatList.Chats = []*Chat{}
-						ui.Win.Invalidate()
-						return D{}
-					}
-				}
-			}
-			return ht.LogoutBtn.Layout(gtx)
+			return D{}
 		}),
 	)
 }
