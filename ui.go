@@ -544,15 +544,9 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 		if err != nil {
 			errl.Println(err)
 			dialog.Message("Error saving configuration").Title("Error!!1").Error()
+		} else {
+			dialog.Message("Reload application to see changes").Title("Info").Info() // crutch to fix nullpointer bug
 		}
-		lastUI := *ui
-		nui := NewUI()
-		nui.ChatList.HomeTab.Settings.Value = true
-		nui.ChatList = lastUI.ChatList
-		nui.Win = lastUI.Win
-		*ui = *nui
-		ui.Win.Invalidate()
-		return D{}
 	}
 	return layout.Flex{
 		Axis: layout.Vertical,
