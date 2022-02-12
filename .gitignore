@@ -1,3 +1,5 @@
 /config.toml
 /notes.txt
 /*.log
+# delve debugger file
+/__debug_bin

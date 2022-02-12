@@ -16,3 +16,7 @@ type sendMessageReq struct {
 	PeerName string `json:"peer_name"`
 	Message  string `json:"message"`
 }
+
+type isOnlineReq struct {
+	Name string `json:"name"`
+}

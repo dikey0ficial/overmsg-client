@@ -14,7 +14,7 @@ var conf = struct {
 	IsDark bool   `toml:"is_dark"`
 }{}
 
-func init() {
+func initConfig() {
 	f, err := os.Open("config.toml")
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -42,6 +42,10 @@ func init() {
 		dialog.Message("Error: %v", err).Title("Error!!1").Error()
 		errl.Println(err)
 		os.Exit(1)
+	}
+	if (conf.Name == "" && conf.Token != "") || (conf.Name != "" && conf.Token == "") {
+		conf.Name, conf.Token = "", ""
+		saveConf()
 	}
 }
 
