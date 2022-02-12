@@ -19,6 +19,7 @@ import (
 	"math"
 	"os"
 	"strings"
+	"time"
 )
 
 type (
@@ -34,7 +35,7 @@ var (
 	stdDP   = unit.Dp(10)
 	hspacer = layout.Rigid(layout.Spacer{Height: stdDP}.Layout)
 	wspacer = layout.Rigid(layout.Spacer{Width: stdDP}.Layout)
-	messCh  chan message
+	messCh  = make(chan message, 0)
 	errSAW  = errors.New("started another work()")
 )
 
@@ -148,6 +149,7 @@ func (ui *UI) SetTheme(dark bool) {
 func (ui *UI) Run(w *app.Window) error {
 	ui.Win = w
 	ui.ChatList.Invalidate, ui.ChatAct.NChat.Invalidate = ui.Win.Invalidate, ui.Win.Invalidate
+	go messageGetter(messCh, &ui.ChatList.Chats, ui.Win.Invalidate)
 	var ops op.Ops
 	for {
 		select {
@@ -401,6 +403,34 @@ func th2w(next func(C, T) D, th T) func(C) D {
 	}
 }
 
+func messageGetter(ch chan message, chats *[]*Chat, inv func()) {
+	t := time.NewTicker(2 * time.Second)
+	for {
+		<-t.C
+		if ch == nil {
+			continue
+		}
+		m, ok := <-ch
+		if !ok {
+			continue
+		}
+		var c *Chat
+		if c = GetByPN(*chats, m.From); c.PeerName == "" {
+			*chats = append(*chats, &Chat{m.From, []GUIMessage{
+				GUIMessage{
+					From: m.From,
+					Text: m.Message,
+				},
+			}, new(widget.Clickable)})
+		}
+		c.Messages = append(c.Messages, GUIMessage{
+			From: m.From,
+			Text: m.Message,
+		})
+		inv()
+	}
+}
+
 // Chat is chat
 type Chat struct {
 	PeerName string
@@ -641,7 +671,11 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 							}
 							if err != nil {
 								errl.Println(err)
-								dialog.Message("Error during registration/authentification").Title("Error!!1").Error()
+								var wr string = err.Error()
+								if token != "err" {
+									wr = "Error during registration/authentification"
+								}
+								dialog.Message(wr).Title("Error!!1").Error()
 								return D{}
 							}
 							conf.Name = ntxt
@@ -735,6 +769,7 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 
 								}
 								ui.ChatList.Chats = []*Chat{}
+								messCh = nil
 								ui.Win.Invalidate()
 								return D{}
 							}

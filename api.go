@@ -73,10 +73,10 @@ func initAPI() {
 				}
 				var got map[string]interface{}
 				if err := json.Unmarshal(in.Bytes(), &got); err != nil {
-					if strings.TrimSpace(in.Text()) == "succcess" {
+					if strings.TrimSpace(in.Text()) == "success" {
 						continue
 					}
-					errl.Println(in.Text(), err)
+					errl.Printf("%s (%v)\n", in.Text(), err)
 					dialog.Message("Error getting info from server (more info in logs) :(")
 					continue
 				}
@@ -196,7 +196,7 @@ func reg(name, pass string) (string, error) {
 		return "", err
 	}
 	if !ans.Success {
-		return "", errors.New(ans.Error)
+		return "err", errors.New(ans.Error)
 	}
 	var (
 		tokinf interface{}
@@ -237,7 +237,7 @@ func getToken(name, pass string) (string, error) {
 		return "", err
 	}
 	if !ans.Success {
-		return "", errors.New(ans.Error)
+		return "err", errors.New(ans.Error)
 	}
 	var (
 		tokinf interface{}
