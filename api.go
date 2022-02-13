@@ -109,16 +109,13 @@ func initAPI() {
 }
 
 func tryGetURLs() error {
-	var variants = []string{
-		"localhost",
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var (
 		bestDur time.Duration = 11 * time.Second
 		bestURL string
 	)
-	for _, url := range variants {
+	for _, url := range conf.ServerURLs {
 		time, err := ping(ctx, url)
 		if err != nil {
 			continue
@@ -129,7 +126,7 @@ func tryGetURLs() error {
 		}
 	}
 	if bestURL == "" {
-		return errors.New("Found no aviable servers")
+		return errors.New("Found no aviable servers in list of servers")
 	}
 	HTTPServerURL, TCPServerURL = "http://"+bestURL+":4422", bestURL+":4242"
 	return nil

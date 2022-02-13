@@ -9,9 +9,10 @@ import (
 )
 
 var conf = struct {
-	Name   string `toml:"name"`
-	Token  string `toml:"token"`
-	IsDark bool   `toml:"is_dark"`
+	Name       string   `toml:"name"`
+	Token      string   `toml:"token"`
+	IsDark     bool     `toml:"is_dark"`
+	ServerURLs []string `toml:"server_urls"`
 }{}
 
 func initConfig() {
@@ -45,7 +46,14 @@ func initConfig() {
 	}
 	if (conf.Name == "" && conf.Token != "") || (conf.Name != "" && conf.Token == "") {
 		conf.Name, conf.Token = "", ""
-		saveConf()
+		saveConf() // no checking error because yes))))
+	}
+	if len(conf.ServerURLs) == 0 {
+		conf.ServerURLs = []string{
+			// while i haven't deployed server, there will be only localhost
+			"localhost",
+		}
+		saveConf() // the same as in last if
 	}
 }
 
