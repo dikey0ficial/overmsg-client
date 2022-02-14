@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"gioui.org/app"
 	"gioui.org/font/gofont"
@@ -125,9 +126,10 @@ func NewUI() *UI {
 		"Show password",
 	)
 	ui.ChatList.HomeTab.ShowPass.Color.Disabled = ui.Theme.Fg
-	ui.ChatList.HomeTab.RegBtn = material.Button(ui.Theme, new(widget.Clickable), "Register") // я новенький
-	ui.ChatList.HomeTab.AuthBtn = material.Button(ui.Theme, new(widget.Clickable), "Log in")  // я уже смешарик
-	ui.ChatList.HomeTab.LogoutBtn = material.Button(ui.Theme, new(widget.Clickable), "Log out")
+	ui.ChatList.HomeTab.RegBtn = material.Button(ui.Theme, new(widget.Clickable), "Register")   // я новенький
+	ui.ChatList.HomeTab.AuthBtn = material.Button(ui.Theme, new(widget.Clickable), "Log in")    // я уже смешарик
+	ui.ChatList.HomeTab.LogoutBtn = material.Button(ui.Theme, new(widget.Clickable), "Log out") // я преисполниился в познании и больше не смешарие
+	ui.ChatList.HomeTab.PingBtn = material.Button(ui.Theme, new(widget.Clickable), "Ping")
 	if conf.Name == "" {
 		ui.ChatList.HomeTab.Settings.Value = true
 	}
@@ -548,6 +550,7 @@ type HomeTab struct {
 	RegBtn      material.ButtonStyle
 	AuthBtn     material.ButtonStyle
 	LogoutBtn   material.ButtonStyle
+	PingBtn     material.ButtonStyle
 }
 
 // LayoutList layouts HomeTab's view in list
@@ -583,6 +586,19 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 		} else {
 			dialog.Message("Reload application to see changes").Title("Info").Info() // crutch to fix nullpointer bug
 		}
+	}
+	if ht.PingBtn.Button.Clicked() {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			dur, err := ping(ctx, HTTPServerURL)
+			if err != nil {
+				errl.Println(err)
+				dialog.Message("Error during ping").Title("Ping result").Error()
+			} else {
+				dialog.Message("Server: %s, time: %s", HTTPServerURL, dur).Title("Ping result").Info()
+			}
+		}()
 	}
 	return layout.Flex{
 		Axis: layout.Vertical,
@@ -795,7 +811,9 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 			)
 		}),
 		hspacer,
-		layout.Rigid(material.H6(th, "Support: overmsg@dikey0ficial.rf.gd").Layout),
+		layout.Rigid(ht.PingBtn.Layout),
+		hspacer,
+		layout.Rigid(material.Body1(th, "Support: overmsg@dikey0ficial.rf.gd").Layout),
 	)
 }
 

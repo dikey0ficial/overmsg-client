@@ -170,7 +170,13 @@ func getMsgsAPI() {
 
 func ping(ctx context.Context, url string) (time.Duration, error) {
 	start := time.Now()
-	req, err := http.NewRequest("GET", "http://"+url+":4422", nil)
+	if !strings.HasPrefix(url, "http://") {
+		url = "http://" + url
+	}
+	if !strings.HasSuffix(url, ":4422") {
+		url += ":4422"
+	}
+	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return time.Duration(0), err
 	}
@@ -181,7 +187,7 @@ func ping(ctx context.Context, url string) (time.Duration, error) {
 	if err != nil {
 		return time.Duration(0), err
 	}
-	return start.Sub(time.Now()), nil
+	return time.Now().Sub(start), nil
 }
 
 var client = &http.Client{}
