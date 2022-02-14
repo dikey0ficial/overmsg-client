@@ -1,5 +1,12 @@
 /config.toml
+# I sometimes making notes in file with this name
 /notes.txt
 /*.log
 # delve debugger file
 /__debug_bin
+# files with this extension appears after Gio console utile using
+/*.syso
+
+/built
+/overmsg-client.exe
+/overmsg-client
