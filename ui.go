@@ -405,12 +405,18 @@ func th2w(next func(C, T) D, th T) func(C) D {
 
 func messageGetter(ch chan message, chats *[]*Chat, inv func()) {
 	t := time.NewTicker(2 * time.Second)
+MGFOR:
 	for {
 		<-t.C
-		if ch == nil {
-			continue
+		var (
+			m  message
+			ok bool
+		)
+		select {
+		case m, ok = <-ch:
+		case <-t.C:
+			continue MGFOR
 		}
-		m, ok := <-ch
 		if !ok {
 			continue
 		}
@@ -658,8 +664,12 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 								-(len([]rune(ht.PassInput.Editor.Text())) - 32),
 							)
 						}
-						if isr := ht.RegBtn.Button.Clicked(); (isr || ht.AuthBtn.Button.Clicked() || isSubmit(ht.NameInput) ||
+						if (isSubmit(ht.NameInput) ||
 							isSubmit(ht.PassInput)) && nwarn == "" && pwarn == "" {
+							dialog.Message("Please, click button. We can't quess do you want to register or log in").
+								Title(":(").Info()
+						}
+						if isr := ht.RegBtn.Button.Clicked(); (isr || ht.AuthBtn.Button.Clicked()) && nwarn == "" && pwarn == "" {
 							var (
 								token string
 								err   error
@@ -680,13 +690,14 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 							}
 							conf.Name = ntxt
 							conf.Token = token
+							TCPConn.Close()
+							initAPI()
 							err = saveConf()
 							if err != nil {
 								errl.Println(err)
 								dialog.Message("Error saving configuration").Title("Error!!1").Error()
 								os.Exit(1)
 							}
-							initAPI()
 						}
 						return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
 							layout.Rigid(material.Label(th, unit.Dp(20), "Name:\t").Layout),
@@ -760,7 +771,7 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 							ok = dialog.Message("Really?").YesNo()
 							if ok {
 								conf.Name, conf.Token = "", ""
-								_ = goOffline(conf.Token) // it will just stop heartbeat
+								_ = goOffline(conf.Token) // it will stop heartbeat and close connection
 								err := saveConf()
 								if err != nil {
 									errl.Println(err)
@@ -769,7 +780,7 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 
 								}
 								ui.ChatList.Chats = []*Chat{}
-								messCh = nil
+								TCPConn.Close()
 								ui.Win.Invalidate()
 								return D{}
 							}

@@ -21,7 +21,8 @@ var (
 	// HTTPServerURL _
 	HTTPServerURL string
 	// TCPConn _
-	TCPConn net.Conn
+	TCPConn         net.Conn
+	closeHbErrChRCh = make(chan struct{})
 )
 
 func initAPI() {
@@ -34,77 +35,41 @@ func initAPI() {
 	if conf.Name != "" && conf.Token != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		var ech chan error
-		TCPConn, ech, err = connectTCP(ctx, conf.Token)
+		var hbErrCh chan error
+		TCPConn, hbErrCh, err = connectTCP(ctx, conf.Token)
 		if err != nil {
 			errl.Println(err)
-			dialog.Message("Error connecting to server").Title("Error!!1").Error()
+			dialog.Message("Error connecting to server (more info in log). " +
+				"This may be if server is offline or you are already online with in other app").Title("Error!!1").Error()
 			os.Exit(1)
 		}
-		go func(ech chan error) {
+		closeHbErrChRCh = make(chan struct{})
+		go func(hbErrCh chan error) {
 			for {
 				if conf.Token == "" {
 					return
 				}
-				err := <-ech
-				if err != nil {
-					_, err := TCPConn.Read(make([]byte, 1))
-					if TCPConn == nil || err != nil {
-						errl.Println(err)
-						if _, err := ping(ctx, HTTPServerURL); err != nil {
+				select {
+				case err := <-hbErrCh:
+					if err != nil {
+						_, err := TCPConn.Read(make([]byte, 1))
+						if TCPConn == nil || err != nil {
 							errl.Println(err)
-							TCPConn, ech, err = connectTCP(ctx, conf.Token)
-							if err != nil {
+							if _, err := ping(ctx, HTTPServerURL); err != nil {
 								errl.Println(err)
-								dialog.Message("Error: can't connect to server").Title("Error!!1").Error()
+								TCPConn, hbErrCh, err = connectTCP(ctx, conf.Token)
+								if err != nil {
+									errl.Println(err)
+									dialog.Message("Error: can't connect to server").Title("Error!!1").Error()
+								}
 							}
 						}
 					}
+				case <-closeHbErrChRCh:
+					return
 				}
 			}
-		}(ech)
-		go func() {
-			in := bufio.NewScanner(TCPConn)
-			for in.Scan() {
-				if in.Err() != nil {
-					errl.Println(err)
-					dialog.Message("Error getting info from server (more info in logs) :(")
-					continue
-				}
-				var got map[string]interface{}
-				if err := json.Unmarshal(in.Bytes(), &got); err != nil {
-					if strings.TrimSpace(in.Text()) == "success" {
-						continue
-					}
-					errl.Printf("%s (%v)\n", in.Text(), err)
-					dialog.Message("Error getting info from server (more info in logs) :(")
-					continue
-				}
-				var t string
-				if el, ok := got["type"]; !ok {
-					continue
-				} else if t, ok = el.(string); !ok {
-					continue
-				}
-				switch t {
-				case "message":
-					var mess message
-					if err := json.Unmarshal(in.Bytes(), &mess); err != nil {
-						errl.Println(err)
-						dialog.Message("Error getting info from server (more info in logs) :(")
-						continue
-					}
-					if mess.Error != "" {
-						errl.Println(mess.Error)
-						dialog.Message("Error getting info from server (more info in logs) :(")
-						continue
-					}
-					messCh <- mess
-				default:
-					continue
-				}
-			}
-		}()
+		}(hbErrCh)
 	}
 }
 
@@ -141,6 +106,7 @@ func connectTCP(ctx context.Context, token string) (net.Conn, chan error, error)
 	conn.Write([]byte(token + "\n"))
 	errCh := make(chan error, 0)
 	go heartbeat(conn, errCh)
+	go getMsgsAPI()
 	return conn, errCh, nil
 }
 
@@ -150,6 +116,55 @@ func heartbeat(conn net.Conn, ech chan error) {
 		<-t.C
 		_, err := http.Post(HTTPServerURL+"/heartbeat", "text/plain", strings.NewReader(conf.Token))
 		ech <- err
+	}
+}
+
+func getMsgsAPI() {
+	for {
+		if TCPConn == nil {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+		in := bufio.NewScanner(TCPConn)
+		for in.Scan() {
+			if in.Err() != nil {
+				errl.Println(in.Err())
+				dialog.Message("Error getting info from server (more info in logs) :(")
+				continue
+			}
+			var got map[string]interface{}
+			if err := json.Unmarshal(in.Bytes(), &got); err != nil {
+				if strings.TrimSpace(in.Text()) == "success" {
+					continue
+				}
+				errl.Printf("%s (%v)\n", in.Text(), err)
+				dialog.Message("Error getting info from server (more info in logs) :(")
+				continue
+			}
+			var t string
+			if el, ok := got["type"]; !ok {
+				continue
+			} else if t, ok = el.(string); !ok {
+				continue
+			}
+			switch t {
+			case "message":
+				var mess message
+				if err := json.Unmarshal(in.Bytes(), &mess); err != nil {
+					errl.Println(err)
+					dialog.Message("Error getting info from server (more info in logs) :(")
+					continue
+				}
+				if mess.Error != "" {
+					errl.Println(mess.Error)
+					dialog.Message("Error getting info from server (more info in logs) :(")
+					continue
+				}
+				messCh <- mess
+			default:
+				continue
+			}
+		}
 	}
 }
 
@@ -275,6 +290,9 @@ func goOffline(token string) error {
 	if !ans.Success {
 		return errors.New(ans.Error)
 	}
+	TCPConn.Close()
+	closeHbErrChRCh <- struct{}{}
+	close(closeHbErrChRCh)
 	return nil
 }
 
