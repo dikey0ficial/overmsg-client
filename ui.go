@@ -17,7 +17,6 @@ import (
 	"golang.org/x/exp/shiny/materialdesign/icons"
 	"image"
 	"image/color"
-	"math"
 	"os"
 	"strings"
 	"time"
@@ -487,15 +486,10 @@ func (c *Chat) LayoutList(gtx C, th T, cl *ChatList) D {
 
 			return b
 		}().Layout(gtx, func(gtx C) D {
-			return layout.Inset{
-				Top:    unit.Dp(5),
-				Bottom: unit.Dp(5),
-				Left:   unit.Dp(5),
-				Right: unit.Px(float32(maxX)/4 - float32(math.Max(
-					float64(material.Label(th, unit.Dp(12.5), getSmallStr(c)).Layout(fgtx(gtx)).Size.X),
-					float64(material.Body2(th, c.PeerName).Layout(fgtx(gtx)).Size.X),
-				))),
-			}.Layout(gtx,
+			gx := *(&gtx)
+			gx.Constraints.Max.X = maxX / 4
+			gx.Constraints.Min.X = gx.Constraints.Max.X
+			return layout.UniformInset(unit.Dp(5)).Layout(gx,
 				func(gtx C) D {
 					return layout.Flex{
 						Axis:      layout.Vertical,
