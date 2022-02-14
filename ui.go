@@ -127,6 +127,7 @@ func NewUI() *UI {
 	ui.ChatList.HomeTab.ShowPass.Color.Disabled = ui.Theme.Fg
 	ui.ChatList.HomeTab.RegBtn = material.Button(ui.Theme, new(widget.Clickable), "Register")   // я новенький
 	ui.ChatList.HomeTab.AuthBtn = material.Button(ui.Theme, new(widget.Clickable), "Log in")    // я уже смешарик
+	ui.ChatList.HomeTab.AuthBtn = material.Button(ui.Theme, new(widget.Clickable), "Log in")    // я уже смешарик
 	ui.ChatList.HomeTab.LogoutBtn = material.Button(ui.Theme, new(widget.Clickable), "Log out") // я преисполниился в познании и больше не смешарие
 	ui.ChatList.HomeTab.PingBtn = material.Button(ui.Theme, new(widget.Clickable), "Ping")
 	if conf.Name == "" {
@@ -700,7 +701,6 @@ func (ht *HomeTab) Layout(gtx C, th T, ui *UI) D {
 							}
 							conf.Name = ntxt
 							conf.Token = token
-							TCPConn.Close()
 							initAPI()
 							err = saveConf()
 							if err != nil {
